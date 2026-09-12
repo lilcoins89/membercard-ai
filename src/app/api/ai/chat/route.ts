@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function generateNumber(org: string): string {
-  const initials = org.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
-  return `${initials || "MC"}-${Math.floor(1000 + Math.random() * 9000)}`;
+function generateNumber(): string {
+  const year = new Date().getFullYear();
+  return `MC-${year}-${Math.floor(100 + Math.random() * 900)}`;
 }
 
 function buildCardFromArgs(argsJson: string, photo?: string | null) {
@@ -74,7 +74,7 @@ function buildCardFromArgs(argsJson: string, photo?: string | null) {
     organizationName: args.organization_name || "Membership",
     memberName: args.member_name || "Member",
     membershipType: args.membership_type || "Member",
-    memberNumber: args.member_number || generateNumber(args.organization_name || "MC"),
+    memberNumber: args.member_number && /^MC-\d{4}-\d{3}$/i.test(args.member_number) ? args.member_number.toUpperCase() : generateNumber(),
     expiration: exp && exp.toLowerCase() !== "none" ? exp : null,
     photoDataUrl: photo || null,
     design,
@@ -111,7 +111,7 @@ function localCardFlow(messages: Msg[], photo?: string | null) {
       organizationName: org,
       memberName: member,
       membershipType: type,
-      memberNumber: generateNumber(org),
+      memberNumber: generateNumber(),
       expiration,
       photoDataUrl: photo && !photoAnswer.includes("skip") ? photo : null,
       design,
