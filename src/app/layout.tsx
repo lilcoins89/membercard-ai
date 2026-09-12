@@ -7,9 +7,8 @@ const figtree = Figtree({ subsets: ["latin"], variable: "--font-sans", display: 
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-display", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "MemberCard AI — Membership cards, created by AI",
-  description:
-    "Create beautiful digital and physical membership cards without complicated setup.",
+  title: "MemberCard AI — Create your membership card with AI",
+  description: "Tell us a little about your card, and we'll create it for you automatically.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
