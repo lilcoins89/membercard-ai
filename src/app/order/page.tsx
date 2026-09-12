@@ -20,6 +20,7 @@ export default function OrderPage() {
   const [state, setState] = useState("CA");
   const [zip, setZip] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [rates, setRates] = useState<ShippingRate[]>([]);
   const [selected, setSelected] = useState<ShippingRate | null>(null);
   const [cardPrice, setCardPrice] = useState(199);
@@ -71,11 +72,15 @@ export default function OrderPage() {
     setError(null);
     const amount = cardPrice + fulfillment + selected.amount_cents;
     try {
+      const shipmentRes = await fetch("/api/shipping", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card_id: card.memberNumber, card_snapshot: card, recipient_name: fullName, email, phone, street, unit, city, state, zip, country: "US", shipping_service: selected.service_code, shipping_cost_cents: selected.amount_cents, card_cost_cents: cardPrice, fulfillment_cost_cents: fulfillment, total_cost_cents: amount }) });
+      const shipmentData = await shipmentRes.json();
+      if (!shipmentData.ok) throw new Error(shipmentData.error || "Could not create shipment");
       const res = await fetch("/api/checkout/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          order_id: `ord_${Date.now()}`,
+          order_id: shipmentData.shipment.id,
+          shipment_id: shipmentData.shipment.id,
           amount_cents: amount,
           description: `Physical membership card — ${card.memberName}`,
         }),
@@ -154,10 +159,15 @@ export default function OrderPage() {
               <label className="mb-1 block text-[13px] font-medium">ZIP code</label>
               <Input value={zip} onChange={(e) => setZip(e.target.value)} required />
             </div>
-            <div>
-              <label className="mb-1 block text-[13px] font-medium">Phone</label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
+          <div>
+            <label className="mb-1 block text-[13px] font-medium">Phone</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="col-span-2">
+            <label className="mb-1 block text-[13px] font-medium">Email for delivery updates</label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
+
           </div>
           <Button type="button" variant="outline" className="w-full" disabled={loadingRates || !fullName || !street || !city || !zip} onClick={() => void loadRates()}>
             {loadingRates ? "Calculating…" : "Calculate shipping"}
