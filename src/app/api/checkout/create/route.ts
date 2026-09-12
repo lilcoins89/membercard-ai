@@ -1,24 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { sql } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Sign in required." }, { status: 401 });
   try {
     const { shipment_id } = await req.json();
-    const rows = await db.execute(sql`SELECT id, total_cents, payment_status FROM public.shipment_orders WHERE id = ${shipment_id} AND user_id = ${user.id}`);
+    const rows = await db.execute(sql`SELECT id, total_cents, payment_status FROM public.shipment_orders WHERE id = ${shipment_id} AND user_id = 'demo-user'`);
     const shipment = rows.rows[0] as { id: string; total_cents: number; payment_status: string } | undefined;
     if (!shipment || shipment.payment_status !== "pending") return NextResponse.json({ ok: false, error: "Shipment is not payable." }, { status: 400 });
     const secret = process.env.STRIPE_SECRET_KEY;
     const origin = process.env.NEXT_PUBLIC_APP_URL ?? req.headers.get("origin") ?? "http://localhost:3000";
     if (!secret) return NextResponse.json({ ok: false, error: "Payment provider is not configured." }, { status: 503 });
     const stripe = new Stripe(secret, { apiVersion: "2024-12-18.acacia" as Stripe.LatestApiVersion });
-    const session = await stripe.checkout.sessions.create({ mode: "payment", success_url: `${origin}/order/success?order=${shipment.id}`, cancel_url: `${origin}/order`, line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: shipment.total_cents, product_data: { name: "Physical membership card delivery" } } }], client_reference_id: shipment.id, metadata: { shipment_id: shipment.id, user_id: user.id } }, { idempotencyKey: `shipment_checkout_${shipment.id}` });
-    await db.execute(sql`UPDATE public.shipment_orders SET stripe_session_id = ${session.id}, updated_at = now() WHERE id = ${shipment.id} AND user_id = ${user.id}`);
+    const session = await stripe.checkout.sessions.create({ mode: "payment", success_url: `${origin}/order/success?order=${shipment.id}`, cancel_url: `${origin}/order`, line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: shipment.total_cents, product_data: { name: "Physical membership card delivery" } } }], client_reference_id: shipment.id, metadata: { shipment_id: shipment.id, user_id: "demo-user" } }, { idempotencyKey: `shipment_checkout_${shipment.id}` });
+    await db.execute(sql`UPDATE public.shipment_orders SET stripe_session_id = ${session.id}, updated_at = now() WHERE id = ${shipment.id} AND user_id = 'demo-user'`);
     return NextResponse.json({ ok: true, checkout_url: session.url });
   } catch (error) { console.error("[checkout/create]", error); return NextResponse.json({ ok: false, error: "Checkout could not be started." }, { status: 500 }); }
 }

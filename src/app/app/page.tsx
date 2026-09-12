@@ -1,5 +1,35 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
+import { ArrowRight, CreditCard, Package, Plus, Sparkles, Truck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { MembershipCard } from "@/components/card/MembershipCard";
+import { db } from "@/lib/db";
+import { sql } from "drizzle-orm";
+import type { CardDraft } from "@/lib/types";
+import { DashboardCardPreview } from "./DashboardCardPreview";
 
-export default function LegacyDashboard() {
-  redirect("/create");
+export const dynamic = "force-dynamic";
+
+async function getDashboardData() {
+  try {
+    const result = await db.execute(sql`SELECT id, recipient_name, country, fulfillment_status, tracking_number, created_at FROM public.shipment_orders WHERE user_id = 'demo-user' ORDER BY created_at DESC LIMIT 5`);
+    const shipments = result.rows as Array<Record<string, string | null>>;
+    return { shipments, connected: true };
+  } catch {
+    return { shipments: [], connected: false };
+  }
+}
+
+export default async function DashboardPage() {
+  const { shipments, connected } = await getDashboardData();
+  return <main className="min-h-dvh bg-background">
+    <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-6 lg:px-8">
+      <Link href="/" className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground">M</span><span className="font-display text-xl">MemberCard AI</span></Link>
+      <div className="flex items-center gap-2"><Button asChild variant="outline" size="sm"><Link href="/shipments"><Truck className="size-4" /> Shipments</Link></Button><Button asChild size="sm"><Link href="/create"><Plus className="size-4" /> New card</Link></Button></div>
+    </header>
+    <section className="mx-auto max-w-6xl space-y-8 px-5 pb-16 lg:px-8">
+      <div><p className="text-sm text-primary">Workspace overview</p><h1 className="mt-2 font-display text-4xl tracking-tight md:text-5xl">Your membership desk</h1><p className="mt-3 max-w-xl text-muted-foreground">Create, manage, and deliver the cards that make your community feel real.</p></div>
+      <div className="grid gap-4 sm:grid-cols-3"><div className="rounded-2xl border border-border bg-card p-5"><Sparkles className="size-5 text-primary" /><p className="mt-5 text-3xl font-semibold">01</p><p className="mt-1 text-sm text-muted-foreground">Cards created</p></div><div className="rounded-2xl border border-border bg-card p-5"><Package className="size-5 text-primary" /><p className="mt-5 text-3xl font-semibold">{shipments.length.toString().padStart(2, "0")}</p><p className="mt-1 text-sm text-muted-foreground">Shipments placed</p></div><div className="rounded-2xl border border-border bg-card p-5"><CreditCard className="size-5 text-primary" /><p className="mt-5 text-3xl font-semibold">{connected ? "Live" : "Offline"}</p><p className="mt-1 text-sm text-muted-foreground">Neon workspace</p></div></div>
+      <div className="grid gap-6 lg:grid-cols-[1.15fr_.85fr]"><section className="rounded-2xl border border-border bg-card p-5 md:p-7"><div className="flex items-center justify-between"><div><p className="text-xs uppercase tracking-[0.18em] text-primary">Latest card</p><h2 className="mt-2 font-display text-2xl">Your membership card</h2></div><Button asChild variant="ghost" size="sm"><Link href="/create">Edit <ArrowRight className="size-4" /></Link></Button></div><DashboardCardPreview /></section><section className="rounded-2xl border border-border bg-card p-5 md:p-7"><div className="flex items-center justify-between"><div><p className="text-xs uppercase tracking-[0.18em] text-primary">Delivery</p><h2 className="mt-2 font-display text-2xl">Recent shipments</h2></div><Truck className="size-5 text-primary" /></div>{shipments.length === 0 ? <div className="mt-10 rounded-xl bg-secondary/50 p-5 text-sm text-muted-foreground">No shipments yet. Create a card and send one to your members.</div> : <div className="mt-6 space-y-3">{shipments.map((shipment) => <div key={String(shipment.id)} className="flex items-center justify-between gap-3 rounded-xl border border-border p-4"><div><p className="font-medium">{shipment.recipient_name}</p><p className="text-xs text-muted-foreground">{shipment.country}</p></div><span className="rounded-full bg-secondary px-3 py-1 text-xs capitalize">{String(shipment.fulfillment_status).replaceAll("_", " ")}</span></div>)}</div>}<Button asChild className="mt-6 w-full" variant="outline"><Link href="/shipments">View delivery timeline <ArrowRight className="size-4" /></Link></Button></section></div>
+    </section>
+  </main>;
 }
