@@ -1,42 +1,37 @@
 # MemberCard AI
 
-**Membership cards, created by AI.**
+**Create your membership card with AI.**
 
-AI-powered digital and physical membership card platform for clubs, gyms, associations, fan clubs, and membership businesses.
+Tell us a little about your card — organization name, member name, photo, membership type — and we generate a premium digital card automatically. Optionally order a physical PVC card shipped in the U.S.
 
-Tell AI what you need → provide the information → cards are created automatically.
+## Experience
+
+1. **Home** — Start Creating
+2. **AI conversation** — asks only what’s needed
+3. **Card ready** — preview, save, share, or order physical
+4. **Physical order** — U.S. address → live shipping rates → Stripe checkout → fulfillment
+
+No admin dashboard. No mock members. Just card generation.
 
 ## Stack
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | Next.js 15 (App Router), TypeScript, Tailwind CSS, Radix UI |
-| Backend | Next.js Route Handlers |
-| Database | Supabase (PostgreSQL + Auth + RLS) |
-| AI | Groq (`llama-3.3-70b-versatile`) with tool/function calling |
-| Payments | Stripe Checkout + webhooks |
-| Fulfillment | Provider-agnostic PVC layer (`mock` + `custom` adapters) |
+- Next.js 15 (App Router) + TypeScript + Tailwind
+- Groq AI (`llama-3.3-70b-versatile`) with tool calling
+- Stripe Checkout
+- Custom PVC fulfillment provider (`FULFILLMENT_API_URL` + `FULFILLMENT_API_KEY`)
 
-## Quick start
+## Setup
 
 ```bash
 npm install
 cp .env.example .env.local
-# Fill Supabase, Groq, and Stripe keys
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Without `GROQ_API_KEY`, the create flow still walks the same questions and generates a card so you can test the UI.
 
-Without env keys the app runs in **demo mode**: landing, AI chat (guided replies), dashboard, members, cards, orders, and public verify (`/verify/demo-sarah-active`).
+## Deploy (Vercel)
 
-## Database
-
-Apply `supabase/schema.sql` in the Supabase SQL editor.
-
-## Deploy
-
-1. Import this repo on Vercel
+1. Import this repo
 2. Set env vars from `.env.example`
-3. Run schema SQL on Supabase
-4. Point Stripe + fulfillment webhooks at your domain
+3. Deploy
