@@ -9,7 +9,7 @@ const statuses = ["pending", "payment_confirmed", "processing", "shipped", "in_t
 export default async function ShipmentsPage() {
   let shipments: Array<Record<string, string | null>> = [];
   try {
-    const result = await db.execute(sql`SELECT id, recipient_name, city, state, country, payment_status, fulfillment_status, tracking_number, tracking_url, estimated_delivery, created_at FROM public.shipment_orders WHERE user_id = 'demo-user' ORDER BY created_at DESC`);
+    const result = await db.execute(sql`SELECT id, recipient_name, city, state, country, payment_status, fulfillment_status, tracking_number, tracking_url, estimated_delivery, created_at FROM public.shipment_orders ORDER BY created_at DESC`);
     shipments = result.rows as Array<Record<string, string | null>>;
   } catch {
     shipments = [];
