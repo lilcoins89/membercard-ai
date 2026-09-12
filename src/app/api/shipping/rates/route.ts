@@ -13,7 +13,6 @@ const addressSchema = z.object({
   phone: z.string().optional().nullable(),
 });
 
-/** Real shipping rates from the fulfillment provider — never a hard-coded $5 fee. */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
