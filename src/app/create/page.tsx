@@ -68,8 +68,8 @@ export default function CreatePage() {
   function saveCard() {
     if (!card) return;
     try {
-      localStorage.setItem("mc_saved_card", JSON.stringify(card));
-      alert("Card saved on this device.");
+      sessionStorage.setItem("mc_card", JSON.stringify(card));
+      alert("Card ready to ship or share.");
     } catch {
       alert("Could not save on this device.");
     }
