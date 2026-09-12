@@ -23,18 +23,16 @@ function publicOrder(row: Stored): FulfillmentOrder {
   return rest;
 }
 
+/** Development rates when custom PVC credentials are not set. */
 export class MockFulfillmentProvider implements FulfillmentProvider {
   id = "mock";
   async getProducts() { return PRODUCTS; }
   async getShippingRates(address: { zip: string }): Promise<ShippingRate[]> {
     const distance = Math.abs(zipZone(address.zip) - 4);
     return [
-      { service: "Standard", service_code: "usps_ground", carrier: "USPS",
-        amount_cents: 249 + distance * 42, currency: "usd", estimated_days: 5 + Math.min(distance, 3) },
-      { service: "Expedited", service_code: "usps_priority", carrier: "USPS",
-        amount_cents: 689 + distance * 68, currency: "usd", estimated_days: 2 },
-      { service: "Overnight", service_code: "usps_express", carrier: "USPS",
-        amount_cents: 1849 + distance * 95, currency: "usd", estimated_days: 1 },
+      { service: "Standard", service_code: "usps_ground", carrier: "USPS", amount_cents: 249 + distance * 42, currency: "usd", estimated_days: 5 + Math.min(distance, 3) },
+      { service: "Expedited", service_code: "usps_priority", carrier: "USPS", amount_cents: 689 + distance * 68, currency: "usd", estimated_days: 2 },
+      { service: "Overnight", service_code: "usps_express", carrier: "USPS", amount_cents: 1849 + distance * 95, currency: "usd", estimated_days: 1 },
     ];
   }
   async createOrder(input: CreateFulfillmentOrderInput): Promise<FulfillmentOrder> {
@@ -65,21 +63,4 @@ export class MockFulfillmentProvider implements FulfillmentProvider {
     row.status = "cancelled";
     return publicOrder(row);
   }
-  async simulateAdvance(id: string, to: "shipped" | "delivered") {
-    const row = store().get(id);
-    if (!row) throw new Error("Fulfillment order not found");
-    const n = id.replace(/\D/g, "").slice(0, 12).padEnd(12, "8");
-    if (to === "shipped") {
-      row.status = "shipped";
-      row.carrier = "USPS";
-      row.tracking_number = `9400${n}`;
-      row.tracking_url = `https://tools.usps.com/go/TrackConfirmAction?tLabels=9400${n}`;
-      row.shipped_at = new Date().toISOString();
-    } else {
-      row.status = "delivered";
-      row.delivered_at = new Date().toISOString();
-    }
-    return publicOrder(row);
-  }
 }
-export const mockFulfillment = new MockFulfillmentProvider();
