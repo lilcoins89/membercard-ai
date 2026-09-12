@@ -11,7 +11,7 @@ Tell us a little about your card — organization name, member name, photo, memb
 3. **Card ready** — preview, save, share, or order physical
 4. **Physical order** — U.S. address → live shipping rates → Stripe checkout → fulfillment
 
-No admin dashboard. No mock members. Just card generation.
+Card delivery now uses Neon for shipment state and an authenticated Stripe webhook for payment-confirmed fulfillment. The mock provider is available only when `FULFILLMENT_PROVIDER=mock` and `FULFILLMENT_TEST_MODE=true`; production requires a real provider adapter.
 
 ## Stack
 
@@ -30,8 +30,20 @@ npm run dev
 
 Without `GROQ_API_KEY`, the create flow still walks the same questions and generates a card so you can test the UI.
 
+## Shipping environment
+
+- `DATABASE_URL` — Neon connection string
+- `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` — server-side Stripe payment and webhook verification
+- `FULFILLMENT_PROVIDER=custom` — required for production fulfillment
+- `FULFILLMENT_API_URL` and `FULFILLMENT_API_KEY` — server-only provider credentials
+- `FULFILLMENT_PROVIDER=mock` plus `FULFILLMENT_TEST_MODE=true` — explicit test-only mode
+- `ADMIN_EMAILS` — comma-separated server-side admin email allowlist
+
+Shipping is priced from the Neon `shipping_config` table; the default is $6.99 domestic and an international surcharge is configurable. A real provider account/API is still required before orders can be submitted to a fulfillment partner.
+
 ## Deploy (Vercel)
 
 1. Import this repo
 2. Set env vars from `.env.example`
-3. Deploy
+3. Configure the Stripe webhook route at `/api/stripe/webhook`
+4. Deploy

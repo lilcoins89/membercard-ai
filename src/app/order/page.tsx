@@ -1,202 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Package } from "lucide-react";
+import { ArrowLeft, Check, LockKeyhole, Package, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { MembershipCard } from "@/components/card/MembershipCard";
-import type { CardDraft, ShippingRate } from "@/lib/types";
-import { formatMoney } from "@/lib/utils";
+import type { CardDraft } from "@/lib/types";
 
-const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
+type FormState = { full_name: string; street: string; unit: string; city: string; state: string; zip: string; country: string; phone: string; email: string };
+const empty: FormState = { full_name: "", street: "", unit: "", city: "", state: "", zip: "", country: "US", phone: "", email: "" };
 
 export default function OrderPage() {
   const [card, setCard] = useState<CardDraft | null>(null);
-  const [fullName, setFullName] = useState("");
-  const [street, setStreet] = useState("");
-  const [unit, setUnit] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("CA");
-  const [zip, setZip] = useState("");
-  const [phone, setPhone] = useState("");
-  const [rates, setRates] = useState<ShippingRate[]>([]);
-  const [selected, setSelected] = useState<ShippingRate | null>(null);
-  const [cardPrice, setCardPrice] = useState(199);
-  const [fulfillment, setFulfillment] = useState(125);
-  const [loadingRates, setLoadingRates] = useState(false);
-  const [checkingOut, setCheckingOut] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(empty);
+  const [quote, setQuote] = useState<{ shipping_cost_cents: number; estimated_days: number } | null>(null);
+  const [step, setStep] = useState<"details" | "review">("details");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem("mc_card");
-      if (raw) {
-        const c = JSON.parse(raw) as CardDraft;
-        setCard(c);
-        setFullName(c.memberName);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  async function loadRates() {
-    setError(null);
-    setLoadingRates(true);
-    try {
-      const res = await fetch("/api/shipping/rates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          full_name: fullName, street, unit: unit || null, city, state, zip,
-          country: "United States", phone: phone || null,
-        }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Could not load rates");
-      setRates(data.rates || []);
-      setSelected((data.rates && data.rates[0]) || null);
-      if (data.card_price_cents) setCardPrice(data.card_price_cents);
-      if (data.fulfillment_cents) setFulfillment(data.fulfillment_cents);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not calculate shipping");
-      setRates([]);
-    } finally {
-      setLoadingRates(false);
-    }
+  useEffect(() => { try { const value = sessionStorage.getItem("mc_card"); if (value) setCard(JSON.parse(value)); } catch { setError("Your card preview could not be loaded."); } }, []);
+  const valid = useMemo(() => Boolean(form.full_name && form.street && form.city && form.zip && form.country && form.email), [form]);
+  function update(key: keyof FormState, value: string) { setForm((current) => ({ ...current, [key]: value })); }
+  async function getQuote() {
+    setError(""); setBusy(true);
+    try { const res = await fetch("/api/shipping/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ country: form.country }) }); const data = await res.json(); if (!data.ok) throw new Error(data.error); setQuote(data); setStep("review"); } catch (e) { setError(e instanceof Error ? e.message : "Could not calculate shipping."); } finally { setBusy(false); }
   }
-
-  async function checkout() {
-    if (!selected || !card) return;
-    setCheckingOut(true);
-    setError(null);
-    const amount = cardPrice + fulfillment + selected.amount_cents;
-    try {
-      const res = await fetch("/api/checkout/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          order_id: `ord_${Date.now()}`,
-          amount_cents: amount,
-          description: `Physical membership card — ${card.memberName}`,
-        }),
-      });
-      const data = await res.json();
-      if (!data.ok || !data.checkout_url) throw new Error(data.error || "Checkout failed");
-      window.location.href = data.checkout_url;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Checkout failed");
-      setCheckingOut(false);
-    }
+  async function pay() {
+    if (!card || !quote) return;
+    setError(""); setBusy(true);
+    try { const shipmentRes = await fetch("/api/shipping/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, card_id: card.memberNumber, card_snapshot: card }) }); const shipment = await shipmentRes.json(); if (!shipment.ok) throw new Error(shipment.error); const checkoutRes = await fetch("/api/checkout/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipment_id: shipment.shipment.id }) }); const checkout = await checkoutRes.json(); if (!checkout.ok) throw new Error(checkout.error); window.location.href = checkout.checkout_url; } catch (e) { setError(e instanceof Error ? e.message : "Checkout could not be started."); setBusy(false); }
   }
-
-  const total = cardPrice + fulfillment + (selected?.amount_cents ?? 0);
-
-  if (!card) {
-    return (
-      <div className="grid min-h-dvh place-items-center p-6 text-center">
-        <div>
-          <p className="text-muted-foreground">No card to order yet.</p>
-          <Button asChild className="mt-4"><Link href="/create">Create a card</Link></Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-dvh bg-background">
-      <header className="mx-auto flex max-w-lg items-center gap-3 px-4 py-5">
-        <Link href="/create" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="size-5" /></Link>
-        <span className="font-display text-lg font-medium">Order physical card</span>
-      </header>
-      <main className="mx-auto max-w-lg space-y-6 px-4 pb-20">
-        <MembershipCard
-          model={{
-            organizationName: card.organizationName,
-            memberName: card.memberName,
-            memberNumber: card.memberNumber,
-            membershipType: card.membershipType,
-            expiration: card.expiration,
-            photoUrl: card.photoDataUrl,
-            status: "active",
-            design: card.design,
-          }}
-          className="mx-auto"
-        />
-        <section className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-soft">
-          <h2 className="font-display text-lg font-medium">Where should we deliver your card?</h2>
-          <p className="text-sm text-muted-foreground">U.S. addresses only.</p>
-          <div>
-            <label className="mb-1 block text-[13px] font-medium">Full name</label>
-            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-          </div>
-          <div>
-            <label className="mb-1 block text-[13px] font-medium">Street address</label>
-            <Input value={street} onChange={(e) => setStreet(e.target.value)} required />
-          </div>
-          <div>
-            <label className="mb-1 block text-[13px] font-medium">Apt / Unit (optional)</label>
-            <Input value={unit} onChange={(e) => setUnit(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-[13px] font-medium">City</label>
-              <Input value={city} onChange={(e) => setCity(e.target.value)} required />
-            </div>
-            <div>
-              <label className="mb-1 block text-[13px] font-medium">State</label>
-              <select className="h-11 w-full rounded-md border border-input bg-card px-3 text-sm" value={state} onChange={(e) => setState(e.target.value)}>
-                {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-[13px] font-medium">ZIP code</label>
-              <Input value={zip} onChange={(e) => setZip(e.target.value)} required />
-            </div>
-            <div>
-              <label className="mb-1 block text-[13px] font-medium">Phone</label>
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-          </div>
-          <Button type="button" variant="outline" className="w-full" disabled={loadingRates || !fullName || !street || !city || !zip} onClick={() => void loadRates()}>
-            {loadingRates ? "Calculating…" : "Calculate shipping"}
-          </Button>
-        </section>
-
-        {rates.length > 0 && (
-          <section className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-soft">
-            <h2 className="font-display text-lg font-medium">Shipping</h2>
-            <div className="space-y-2">
-              {rates.map((r) => (
-                <label key={r.service_code} className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 text-sm ${
-                  selected?.service_code === r.service_code ? "border-primary bg-primary/5" : "border-border"
-                }`}>
-                  <span className="flex items-center gap-3">
-                    <input type="radio" name="ship" checked={selected?.service_code === r.service_code} onChange={() => setSelected(r)} />
-                    <span>
-                      <span className="font-medium">{r.service}</span>
-                      <span className="block text-xs text-muted-foreground">{r.carrier} · ~{r.estimated_days} day{r.estimated_days === 1 ? "" : "s"}</span>
-                    </span>
-                  </span>
-                  <span className="tabular-nums">{formatMoney(r.amount_cents)}</span>
-                </label>
-              ))}
-            </div>
-            <div className="space-y-1 border-t border-border pt-3 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Card</span><span>{formatMoney(cardPrice)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Production</span><span>{formatMoney(fulfillment)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Shipping</span><span>{formatMoney(selected?.amount_cents ?? 0)}</span></div>
-              <div className="flex justify-between pt-1 text-base font-medium"><span>Total</span><span>{formatMoney(total)}</span></div>
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button className="w-full" disabled={!selected || checkingOut} onClick={() => void checkout()}>
-              <Package className="size-4" />{checkingOut ? "Redirecting…" : "Pay & order"}
-            </Button>
-          </section>
-        )}
-        {error && rates.length === 0 && <p className="text-sm text-destructive">{error}</p>}
-      </main>
-    </div>
-  );
+  if (!card) return <main className="mx-auto max-w-lg px-4 py-16 text-center"><p className="text-muted-foreground">Create a digital card before ordering a physical one.</p><Button asChild className="mt-6"><Link href="/create">Create a card</Link></Button></main>;
+  const fields: Array<[keyof FormState, string, boolean]> = [["full_name", "Full name", true], ["email", "Email", true], ["street", "Street address", true], ["unit", "Apartment / unit", false], ["city", "City", true], ["state", "State / region", false], ["zip", "ZIP / postal code", true], ["phone", "Phone number", false]];
+  return <div className="min-h-dvh bg-background"><header className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-5"><Link href="/create" className="text-muted-foreground"><ArrowLeft className="size-5" /></Link><div><p className="font-display text-lg">Ship your fan card</p><p className="text-xs text-muted-foreground">Secure delivery, with tracking included</p></div></header><main className="mx-auto grid max-w-5xl gap-8 px-4 pb-16 lg:grid-cols-[1fr_360px] lg:items-start"><section><div className="mb-6 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground"><span className="flex items-center gap-2 text-primary"><span className="grid size-6 place-items-center rounded-full bg-primary text-primary-foreground">{step === "review" ? <Check className="size-3" /> : "1"}</span> Details</span><span className="h-px w-8 bg-border" /><span className={step === "review" ? "text-primary" : ""}>2 Review</span></div>{step === "details" ? <div className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"><div><h1 className="font-display text-2xl">Where should we send it?</h1><p className="mt-1 text-sm leading-6 text-muted-foreground">Use a deliverable address. We&apos;ll only use these details for this order.</p></div><div className="grid gap-4 sm:grid-cols-2">{fields.map(([key, label, required]) => <label key={key} className="grid gap-1.5 text-sm"><span>{label}{required ? " *" : ""}</span><input required={required} value={form[key]} onChange={(e) => update(key, e.target.value)} className="h-11 rounded-lg border border-input bg-background px-3 outline-none focus:ring-2 focus:ring-ring" /></label>)}<label className="grid gap-1.5 text-sm"><span>Country *</span><select value={form.country} onChange={(e) => update("country", e.target.value)} className="h-11 rounded-lg border border-input bg-background px-3"><option value="US">United States</option><option value="CA">Canada</option><option value="GB">United Kingdom</option><option value="AU">Australia</option></select></label></div><Button onClick={() => void getQuote()} disabled={!valid || busy} className="w-full">{busy ? "Calculating…" : "Review delivery"}</Button>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}</div> : <div className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"><div><h1 className="font-display text-2xl">Review your delivery</h1><p className="mt-1 text-sm leading-6 text-muted-foreground">Confirm everything before secure payment.</p></div><div className="rounded-xl bg-secondary p-4 text-sm leading-6"><p className="font-medium">{form.full_name}</p><p>{form.street}{form.unit ? `, ${form.unit}` : ""}</p><p>{form.city}{form.state ? `, ${form.state}` : ""} {form.zip}</p><p>{form.country} · {form.email}</p></div><div className="flex justify-between border-t border-border pt-4 text-sm"><span>Physical card delivery</span><span className="font-medium">${((quote?.shipping_cost_cents ?? 0) / 100).toFixed(2)}</span></div><p className="text-xs leading-5 text-muted-foreground">Estimated delivery: {quote?.estimated_days} business days. Final pricing is calculated from the current shipping configuration.</p><div className="flex gap-3"><Button variant="outline" onClick={() => setStep("details")} className="flex-1">Edit</Button><Button onClick={() => void pay()} disabled={busy} className="flex-1">{busy ? "Opening checkout…" : "Pay securely"}</Button></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}</div>}</section><aside className="space-y-4 lg:sticky lg:top-6"><div className="rounded-2xl border border-border bg-card p-4"><p className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Your card</p><MembershipCard model={{ organizationName: card.organizationName, memberName: card.memberName, memberNumber: card.memberNumber, membershipType: card.membershipType, expiration: card.expiration, photoUrl: card.photoDataUrl, status: "active", design: card.design }} /></div><div className="grid gap-3 rounded-2xl bg-secondary p-4 text-sm"><p className="flex items-center gap-2"><ShieldCheck className="size-4 text-primary" /> Real-time delivery updates</p><p className="flex items-center gap-2"><Package className="size-4 text-primary" /> Provider-confirmed fulfillment</p><p className="flex items-center gap-2"><LockKeyhole className="size-4 text-primary" /> Secure Stripe payment</p></div></aside></main></div>;
 }
