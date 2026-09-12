@@ -2,10 +2,9 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ImagePlus, Send, Share2, Download, Package, ArrowLeft } from "lucide-react";
+import { ArrowLeft, ImagePlus, Send } from "lucide-react";
+import { CardEditor } from "./CardEditor";
 import { Button } from "@/components/ui/button";
-import { MembershipCard } from "@/components/card/MembershipCard";
 import type { CardDraft } from "@/lib/types";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -16,7 +15,6 @@ const FIRST: Msg = {
 };
 
 export default function CreatePage() {
-  const router = useRouter();
   const [messages, setMessages] = useState<Msg[]>([FIRST]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -65,69 +63,7 @@ export default function CreatePage() {
     reader.readAsDataURL(file);
   }
 
-  function saveCard() {
-    if (!card) return;
-    try {
-      sessionStorage.setItem("mc_card", JSON.stringify(card));
-      alert("Card ready to ship or share.");
-    } catch {
-      alert("Could not save on this device.");
-    }
-  }
-
-  async function shareCard() {
-    if (!card) return;
-    const text = `${card.organizationName} — ${card.memberName} (${card.membershipType}) #${card.memberNumber}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: "My membership card", text }); return; } catch { /* fall through */ }
-    }
-    await navigator.clipboard.writeText(text);
-    alert("Card details copied.");
-  }
-
-  function orderPhysical() {
-    if (!card) return;
-    try { sessionStorage.setItem("mc_card", JSON.stringify(card)); } catch { /* ignore */ }
-    router.push("/order");
-  }
-
-  if (card) {
-    return (
-      <div className="min-h-dvh bg-background">
-        <header className="mx-auto flex max-w-lg items-center gap-3 px-4 py-5">
-          <Link href="/" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="size-5" /></Link>
-          <span className="font-display text-lg font-medium">Your card is ready</span>
-        </header>
-        <main className="mx-auto max-w-lg px-4 pb-16">
-          <p className="mb-6 text-center text-2xl">✨</p>
-          <h1 className="mb-6 text-center font-display text-2xl font-medium tracking-tight">YOUR CARD IS READY</h1>
-          <MembershipCard
-            model={{
-              organizationName: card.organizationName,
-              memberName: card.memberName,
-              memberNumber: card.memberNumber,
-              membershipType: card.membershipType,
-              expiration: card.expiration,
-              photoUrl: card.photoDataUrl,
-              status: "active",
-              design: card.design,
-            }}
-            className="mx-auto"
-          />
-          <div className="mt-8 grid gap-3">
-            <Button onClick={saveCard} className="w-full"><Download className="size-4" /> Save Card</Button>
-            <Button variant="outline" onClick={() => void shareCard()} className="w-full"><Share2 className="size-4" /> Share Card</Button>
-            <Button variant="secondary" onClick={orderPhysical} className="w-full"><Package className="size-4" /> Order Physical Card</Button>
-          </div>
-          <p className="mt-6 text-center">
-            <button type="button" className="text-sm text-primary hover:underline" onClick={() => { setCard(null); setMessages([FIRST]); setPhoto(null); }}>
-              Create another card
-            </button>
-          </p>
-        </main>
-      </div>
-    );
-  }
+  if (card) return <CardEditor initial={card} />;
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">

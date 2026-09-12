@@ -16,9 +16,10 @@ export default function OrderPage() {
   const [quote, setQuote] = useState<{ shipping_cost_cents: number; estimated_days: number } | null>(null);
   const [step, setStep] = useState<"details" | "review">("details");
   const [busy, setBusy] = useState(false);
+  const [cardId, setCardId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => { try { const value = sessionStorage.getItem("mc_card"); if (value) setCard(JSON.parse(value)); } catch { setError("Your card preview could not be loaded."); } }, []);
+  useEffect(() => { try { const value = sessionStorage.getItem("mc_card"); if (value) setCard(JSON.parse(value)); setCardId(sessionStorage.getItem("mc_card_id")); } catch { setError("Your card preview could not be loaded."); } }, []);
   const valid = useMemo(() => Boolean(form.full_name && form.street && form.city && form.zip && form.country && form.email), [form]);
   function update(key: keyof FormState, value: string) { setForm((current) => ({ ...current, [key]: value })); }
   async function getQuote() {
@@ -28,7 +29,7 @@ export default function OrderPage() {
   async function pay() {
     if (!card || !quote) return;
     setError(""); setBusy(true);
-    try { const shipmentRes = await fetch("/api/shipping/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, card_id: card.memberNumber, card_snapshot: card }) }); const shipment = await shipmentRes.json(); if (!shipment.ok) throw new Error(shipment.error); const checkoutRes = await fetch("/api/checkout/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipment_id: shipment.shipment.id }) }); const checkout = await checkoutRes.json(); if (!checkout.ok) throw new Error(checkout.error); window.location.href = checkout.checkout_url; } catch (e) { setError(e instanceof Error ? e.message : "Checkout could not be started."); setBusy(false); }
+    try { const shipmentRes = await fetch("/api/shipping/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, card_id: cardId ?? card.memberNumber, card_snapshot: card }) }); const shipment = await shipmentRes.json(); if (!shipment.ok) throw new Error(shipment.error); const checkoutRes = await fetch("/api/checkout/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shipment_id: shipment.shipment.id }) }); const checkout = await checkoutRes.json(); if (!checkout.ok) throw new Error(checkout.error); window.location.href = checkout.checkout_url; } catch (e) { setError(e instanceof Error ? e.message : "Checkout could not be started."); setBusy(false); }
   }
   if (!card) return <main className="mx-auto max-w-lg px-4 py-16 text-center"><p className="text-muted-foreground">Create a digital card before ordering a physical one.</p><Button asChild className="mt-6"><Link href="/create">Create a card</Link></Button></main>;
   const fields: Array<[keyof FormState, string, boolean]> = [["full_name", "Full name", true], ["email", "Email", true], ["street", "Street address", true], ["unit", "Apartment / unit", false], ["city", "City", true], ["state", "State / region", false], ["zip", "ZIP / postal code", true], ["phone", "Phone number", false]];
