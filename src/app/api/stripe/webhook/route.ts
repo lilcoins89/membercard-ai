@@ -24,10 +24,19 @@ export async function POST(req: Request) {
           const card = (shipment.card_snapshot ?? {}) as Record<string, unknown>;
           const provider = getFulfillmentProvider();
           const input: CreateFulfillmentOrderInput = { idempotency_key: String(shipment.idempotency_key), product_sku: "membership-pvc-card", quantity: 1, shipping: { service: "Configured delivery", service_code: "configured", carrier: "provider", amount_cents: Number(shipment.shipping_cost_cents), currency: "usd", estimated_days: 7 }, address: { full_name: String(shipment.recipient_name), phone: String(shipment.phone ?? ""), street: String(shipment.street), unit: String(shipment.unit ?? ""), city: String(shipment.city), state: String(shipment.state ?? ""), zip: String(shipment.postal_code), country: String(shipment.country) }, artwork: { card_id: String(shipment.id), member_name: String(card.memberName ?? ""), member_number: String(card.memberNumber ?? ""), membership_type: String(card.membershipType ?? ""), expiration_date: card.expiration ? String(card.expiration) : null, organization_name: String(card.organizationName ?? ""), design: card.design as never } };
-          const result = await provider.createOrder(input);
-          await db.execute(sql`UPDATE public.shipment_orders SET fulfillment_status = 'processing', provider_order_id = ${result.id}, tracking_number = ${result.tracking_number ?? null}, tracking_url = ${result.tracking_url ?? null}, estimated_delivery = ${result.estimated_delivery ? new Date(result.estimated_delivery) : null}, updated_at = now() WHERE id = ${id}`);
+          const existingProviderOrder = await db.execute(sql`SELECT provider_order_id, fulfillment_status FROM public.shipment_orders WHERE id = ${id}`);
+          const existing = existingProviderOrder.rows[0] as { provider_order_id?: string | null; fulfillment_status?: string } | undefined;
+          if (existing?.provider_order_id || ["processing", "shipped", "in_transit", "delivered"].includes(String(existing?.fulfillment_status))) return NextResponse.json({ received: true });
+          const created = await provider.createOrder(input);
+          const result = created.status === "created" ? await provider.submitOrder(created.id) : created;
+          await db.execute(sql`INSERT INTO public.fulfillment_events (shipment_id, event_type, status, payload) VALUES (${id}, 'provider_order_submitted', ${result.status}, ${JSON.stringify(result)}::jsonb)`);
+          await db.execute(sql`UPDATE public.shipment_orders SET fulfillment_status = ${result.status === "shipped" ? "shipped" : "processing"}, provider_order_id = ${result.id}, tracking_number = ${result.tracking_number ?? null}, tracking_url = ${result.tracking_url ?? null}, estimated_delivery = ${result.estimated_delivery ? new Date(result.estimated_delivery) : null}, updated_at = now() WHERE id = ${id} AND provider_order_id IS NULL`);
         }
-      } catch (error) { await db.execute(sql`UPDATE public.shipment_orders SET fulfillment_status = 'failed', error_message = ${error instanceof Error ? error.message : "Fulfillment failed"}, updated_at = now() WHERE id = ${id}`); }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Fulfillment failed";
+        await db.execute(sql`INSERT INTO public.fulfillment_events (shipment_id, event_type, status, error_message) VALUES (${id}, 'provider_order_failed', 'failed', ${message})`);
+        await db.execute(sql`UPDATE public.shipment_orders SET fulfillment_status = 'failed', error_message = ${message}, updated_at = now() WHERE id = ${id}`);
+      }
     }
   }
   if (event.type === "charge.refunded") { const charge = event.data.object as Stripe.Charge; await db.execute(sql`UPDATE public.shipment_orders SET payment_status = 'refunded', fulfillment_status = 'refunded', updated_at = now() WHERE stripe_payment_intent_id = ${String(charge.payment_intent ?? "")}`); }
