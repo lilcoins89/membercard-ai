@@ -35,7 +35,9 @@ export function CardEditor({ initial }: { initial: CardDraft }) {
       setCard(saved); setSavedId(data.card_id);
       sessionStorage.setItem("mc_card", JSON.stringify(saved));
       sessionStorage.setItem("mc_card_id", data.card_id);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save card"); }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The card could not be saved. Please try again.");
+    }
     finally { setSaving(false); }
   }
   function exportCard() {

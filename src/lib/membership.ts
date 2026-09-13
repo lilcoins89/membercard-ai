@@ -18,6 +18,15 @@ export async function createUniqueMembershipId() {
   throw new Error("Could not allocate a unique membership ID");
 }
 
+function normalizeExpiration(value: string | null | undefined) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}$/.test(trimmed)) return `${trimmed}-01`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+}
+
 export async function saveMembershipCard(card: {
   organizationName: string;
   memberName: string;
@@ -28,9 +37,10 @@ export async function saveMembershipCard(card: {
   design: unknown;
 }) {
   if (!isValidMembershipId(card.memberNumber)) throw new Error("Invalid membership ID");
+  const expiration = normalizeExpiration(card.expiration);
   const result = await db.execute(sql`
     INSERT INTO public.membership_cards (public_membership_id, organization_name, member_name, membership_type, expiration_date, photo_data_url, design)
-    VALUES (${card.memberNumber}, ${card.organizationName}, ${card.memberName}, ${card.membershipType}, ${card.expiration || null}, ${card.photoDataUrl}, ${JSON.stringify(card.design)}::jsonb)
+    VALUES (${card.memberNumber}, ${card.organizationName}, ${card.memberName}, ${card.membershipType}, ${expiration}, ${card.photoDataUrl}, ${JSON.stringify(card.design)}::jsonb)
     ON CONFLICT (public_membership_id) DO UPDATE SET organization_name = EXCLUDED.organization_name, member_name = EXCLUDED.member_name, membership_type = EXCLUDED.membership_type, expiration_date = EXCLUDED.expiration_date, photo_data_url = EXCLUDED.photo_data_url, design = EXCLUDED.design, updated_at = now()
     RETURNING id, public_membership_id
   `);
