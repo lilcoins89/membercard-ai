@@ -11,10 +11,16 @@ export const shippingSchema = z.object({
   country: z.string().length(2),
   phone: z.string().min(7).max(30).optional(),
   email: z.string().email(),
+  service: z.enum(["standard", "rush"]).default("standard"),
   card_snapshot: z.record(z.unknown()),
 });
 
 export type ShippingInput = z.infer<typeof shippingSchema>;
+export const SHIPPING_SERVICES = {
+  standard: { label: "Standard delivery", description: "2–5 business days", amount_cents: 666, estimated_days: 5 },
+  rush: { label: "Priority delivery", description: "Under 24 hours", amount_cents: 1800, estimated_days: 1 },
+} as const;
+export type ShippingService = keyof typeof SHIPPING_SERVICES;
 export type ShipmentStatus = "pending" | "payment_confirmed" | "processing" | "shipped" | "in_transit" | "delivered" | "failed" | "cancelled" | "refunded";
 
 export function quoteShipping(country: string, config?: { base_fee_cents?: number; card_fee_cents?: number; international_surcharge_cents?: number }) {
