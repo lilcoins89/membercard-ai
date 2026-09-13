@@ -3,8 +3,8 @@ import { PublicKey } from "@solana/web3.js";
 export const SOLANA_TREASURY = "GfoFdkeJiPrYZuCgTLPxgWdWmh8NoB4QCc2CjhLfspFX";
 export const SOLANA_NETWORK = "mainnet-beta" as const;
 
-export function createSolanaPayUrl(input: { amountCents: number; reference: string; label?: string }) {
-  const params = new URLSearchParams({ amount: (input.amountCents / 100).toFixed(2), reference: input.reference, label: input.label ?? "MemberCard AI", message: "Physical membership card" });
+export function createSolanaPayUrl(input: { amountSol: number; reference: string; label?: string }) {
+  const params = new URLSearchParams({ amount: input.amountSol.toFixed(9), reference: input.reference, label: input.label ?? "MemberCard AI", message: "Physical membership card" });
   return `solana:${SOLANA_TREASURY}?${params.toString()}`;
 }
 
