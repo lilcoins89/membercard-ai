@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       card: buildCard(result.object, body.photo_data_url),
     });
   } catch (error) {
-    console.error("[ai/chat]", error);
+    console.warn("[ai/chat] Gateway unavailable; using local card flow.", error instanceof Error ? error.message : error);
     return NextResponse.json(localCardFlow(messages, photoDataUrl));
   }
 }
