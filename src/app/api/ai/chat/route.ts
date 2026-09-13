@@ -1,5 +1,4 @@
 import { randomInt } from "node:crypto";
-import { generateObject, generateText, gateway } from "ai";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { DEFAULT_CARD_DESIGN, type CardDesign } from "@/lib/types";
@@ -20,7 +19,6 @@ const cardSchema = z.object({
   text_color: z.string().regex(/^#[0-9a-f]{6}$/i),
 });
 
-const model = gateway("openai/gpt-5-mini");
 
 export async function POST(req: NextRequest) {
   let messages: Msg[] = [];
@@ -29,34 +27,9 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as { messages?: Msg[]; photo_data_url?: string | null };
     messages = Array.isArray(body.messages) ? body.messages.slice(-12) : [];
     photoDataUrl = body.photo_data_url;
-    const userCount = messages.filter((message) => message.role === "user").length;
-
-    if (userCount < 5) {
-      const result = await generateText({
-        model,
-        system: "You are the MemberCard AI card designer. Ask exactly one concise next question. Collect organization name, member name, photo preference, membership type, then expiration date. Do not invent details.",
-        messages,
-        temperature: 0.2,
-      });
-      return NextResponse.json({ ok: true, message: { role: "assistant", content: result.text }, card: null });
-    }
-
-    const result = await generateObject({
-      model,
-      schema: cardSchema,
-      system: "Create a polished membership card from the conversation. Use only user-provided facts. If no expiration is requested, return null. Choose a cohesive accessible design palette.",
-      messages,
-      temperature: 0.2,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      message: { role: "assistant", content: "Your card is ready. Review the preview, then save it or order a physical card." },
-      card: buildCard(result.object, body.photo_data_url),
-    });
-  } catch (error) {
-    console.warn("[ai/chat] Gateway unavailable; using local card flow.", error instanceof Error ? error.message : error);
     return NextResponse.json(localCardFlow(messages, photoDataUrl));
+  } catch {
+    return NextResponse.json({ ok: false, error: "Please send a valid card creation message." }, { status: 400 });
   }
 }
 
