@@ -39,7 +39,7 @@ create table if not exists public.shipment_orders (
   shipping_cost_cents integer not null,
   total_cents integer not null,
   idempotency_key text not null unique,
-  payment_status text not null default 'pending' check (payment_status in ('pending','paid','failed')),
+  payment_status text not null default 'pending' check (payment_status in ('pending','paid','failed','refunded')),
   solana_reference text unique,
   solana_amount_lamports bigint,
   solana_usd_rate numeric(12,4),
@@ -81,3 +81,29 @@ create index if not exists card_designs_owner_idx on public.card_designs (owner_
 
 alter table public.shipment_orders add column if not exists usdc_amount integer;
 create unique index if not exists shipment_orders_payment_signature_idx on public.shipment_orders (solana_signature) where solana_signature is not null;
+
+-- Fulfillment tracking columns read/written by the Stripe webhook, shipments page, and admin page.
+alter table public.shipment_orders add column if not exists fulfillment_status text not null default 'pending';
+alter table public.shipment_orders add column if not exists provider_order_id text;
+alter table public.shipment_orders add column if not exists tracking_number text;
+alter table public.shipment_orders add column if not exists tracking_url text;
+alter table public.shipment_orders add column if not exists estimated_delivery timestamptz;
+alter table public.shipment_orders add column if not exists error_message text;
+alter table public.shipment_orders add column if not exists stripe_payment_intent_id text;
+create index if not exists shipment_orders_stripe_payment_intent_idx on public.shipment_orders (stripe_payment_intent_id) where stripe_payment_intent_id is not null;
+
+-- The Stripe webhook sets payment_status = 'refunded'. Postgres names the original inline check
+-- shipment_orders_payment_status_check, so drop it and re-add it with the extended value list.
+alter table public.shipment_orders drop constraint if exists shipment_orders_payment_status_check;
+alter table public.shipment_orders add constraint shipment_orders_payment_status_check check (payment_status in ('pending','paid','failed','refunded'));
+
+create table if not exists public.fulfillment_events (
+  id uuid primary key default gen_random_uuid(),
+  shipment_id uuid references public.shipment_orders(id) on delete cascade,
+  event_type text not null,
+  status text,
+  payload jsonb,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+create index if not exists fulfillment_events_shipment_idx on public.fulfillment_events (shipment_id, created_at desc);
