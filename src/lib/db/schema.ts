@@ -45,8 +45,16 @@ export const shipmentOrders = pgTable("shipment_orders", {
   solanaUsdRate: numeric("solana_usd_rate", { precision: 12, scale: 4 }),
   paymentProvider: text("payment_provider"),
   solanaSignature: text("solana_signature").unique(),
-  usdcAmount: integer("usdc_amount"),
+  usdcAmount: bigint("usdc_amount", { mode: "number" }),
   stripeSessionId: text("stripe_session_id").unique(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  fulfillmentStatus: text("fulfillment_status").notNull().default("pending"),
+  providerOrderId: text("provider_order_id"),
+  trackingNumber: text("tracking_number"),
+  trackingUrl: text("tracking_url"),
+  estimatedDelivery: timestamp("estimated_delivery", { withTimezone: true }),
+  errorMessage: text("error_message"),
+  fulfillmentClaimedAt: timestamp("fulfillment_claimed_at", { withTimezone: true }),
   paidAt: timestamp("paid_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -62,10 +70,26 @@ export const cardDesigns = pgTable("card_designs", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const schema = { membershipCards, shippingConfig, shipmentOrders, cardDesigns };
+export const fulfillmentEvents = pgTable("fulfillment_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  shipmentId: uuid("shipment_id").references(() => shipmentOrders.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  status: text("status"),
+  payload: jsonb("payload"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const stripeEvents = pgTable("stripe_events", {
+  id: text("id").primaryKey(),
+  type: text("type"),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const schema = { membershipCards, shippingConfig, shipmentOrders, cardDesigns, fulfillmentEvents, stripeEvents };
 export type MembershipCard = typeof membershipCards.$inferSelect;
 export type ShipmentOrder = typeof shipmentOrders.$inferSelect;
 export type CardDesign = typeof cardDesigns.$inferSelect;
-export type PaymentStatus = "pending" | "paid" | "failed";
+export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
 
 export default schema;
