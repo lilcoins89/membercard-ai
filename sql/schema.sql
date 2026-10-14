@@ -45,7 +45,7 @@ create table if not exists public.shipment_orders (
   solana_usd_rate numeric(12,4),
   payment_provider text,
   solana_signature text unique,
-  usdc_amount integer,
+  usdc_amount bigint,
   stripe_session_id text unique,
   paid_at timestamptz,
   created_at timestamptz not null default now(),
@@ -79,5 +79,39 @@ create table if not exists public.card_designs (
 );
 create index if not exists card_designs_owner_idx on public.card_designs (owner_id, updated_at desc);
 
-alter table public.shipment_orders add column if not exists usdc_amount integer;
+-- Fulfillment, payment and tracking columns used by src/app and src/lib.
+alter table public.shipment_orders add column if not exists usdc_amount bigint;
+alter table public.shipment_orders alter column usdc_amount type bigint;
+alter table public.shipment_orders add column if not exists stripe_payment_intent_id text;
+alter table public.shipment_orders add column if not exists fulfillment_status text not null default 'pending';
+alter table public.shipment_orders add column if not exists provider_order_id text;
+alter table public.shipment_orders add column if not exists tracking_number text;
+alter table public.shipment_orders add column if not exists tracking_url text;
+alter table public.shipment_orders add column if not exists estimated_delivery timestamptz;
+alter table public.shipment_orders add column if not exists error_message text;
+alter table public.shipment_orders add column if not exists fulfillment_claimed_at timestamptz;
+
+-- The Stripe webhook sets payment_status = 'refunded' on charge.refunded.
+alter table public.shipment_orders drop constraint if exists shipment_orders_payment_status_check;
+alter table public.shipment_orders add constraint shipment_orders_payment_status_check check (payment_status in ('pending','paid','failed','refunded'));
+
+create index if not exists shipment_orders_stripe_payment_intent_idx on public.shipment_orders (stripe_payment_intent_id);
+
+create table if not exists public.fulfillment_events (
+  id uuid primary key default gen_random_uuid(),
+  shipment_id uuid references public.shipment_orders(id) on delete cascade,
+  event_type text not null,
+  status text,
+  payload jsonb,
+  error_message text,
+  created_at timestamptz default now()
+);
+create index if not exists fulfillment_events_shipment_idx on public.fulfillment_events (shipment_id, created_at desc);
+
+create table if not exists public.stripe_events (
+  id text primary key,
+  type text,
+  received_at timestamptz not null default now()
+);
+
 create unique index if not exists shipment_orders_payment_signature_idx on public.shipment_orders (solana_signature) where solana_signature is not null;
