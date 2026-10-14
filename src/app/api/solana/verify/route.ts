@@ -20,27 +20,57 @@ async function heliusRpc(method: string, params: unknown[], id: number) {
 export async function POST(req: Request) {
   try {
     const { shipment_id, signature, email } = await req.json();
-    if (!shipment_id || typeof signature !== "string" || signature.length < 80 || typeof email !== "string" || !email.includes("@")) return NextResponse.json({ ok: false, error: "A valid payment signature is required." }, { status: 400 });
+    if (!shipment_id || typeof signature !== "string" || signature.length < 10 || typeof email !== "string" || !email.includes("@")) return NextResponse.json({ ok: false, error: "A valid payment signature is required." }, { status: 400 });
     if (!process.env.HELIUS_API && !process.env.HELIUS_RPC) return NextResponse.json({ ok: false, error: "Solana verification is not configured." }, { status: 503 });
-    const rows = await db.execute(sql`SELECT id, total_cents, solana_reference, solana_amount_lamports, payment_status FROM public.shipment_orders WHERE id = ${shipment_id}`);
-    const order = rows.rows[0] as { id: string; total_cents: number; solana_reference: string | null; solana_amount_lamports: number | null; payment_status: string } | undefined;
+    const usdcMint = process.env.SOL_USDC_MINT?.trim();
+    if (!usdcMint) return NextResponse.json({ ok: false, error: "USDC mint is not configured on the server." }, { status: 503 });
+
+    const rows = await db.execute(sql`SELECT id, total_cents, solana_reference, solana_amount_lamports, payment_status, user_id FROM public.shipment_orders WHERE id = ${shipment_id}`);
+    const order = rows.rows[0] as { id: string; total_cents: number; solana_reference: string | null; solana_amount_lamports: number | null; payment_status: string; user_id: string } | undefined;
     if (!order || !order.solana_reference || order.payment_status !== "pending") return NextResponse.json({ ok: false, error: "Payment intent is unavailable." }, { status: 400 });
-    const signatures = await heliusRpc("getSignaturesForAddress", [order.solana_reference, { limit: 20 }], 1) as Array<{ signature: string; err: unknown }> | undefined;
+
+    const signatures = await heliusRpc("getSignaturesForAddress", [order.solana_reference, { limit: 50 }], 1) as Array<{ signature: string; err: unknown }> | undefined;
     if (!signatures?.some((item) => item.signature === signature && !item.err)) return NextResponse.json({ ok: false, error: "Payment signature was not found for this payment reference." }, { status: 400 });
+
     const transaction = await heliusRpc("getTransaction", [signature, { encoding: "jsonParsed", commitment: "finalized", maxSupportedTransactionVersion: 0 }], 2);
-    if (!transaction?.meta || transaction.meta.err || !transaction.blockTime) return NextResponse.json({ ok: false, error: "Payment is not finalized." }, { status: 400 });
-    const keys = transaction.transaction.message.accountKeys as Array<{ pubkey: string; signer?: boolean }>;
-    const accountKeySet = new Set(keys.map((key) => key.pubkey));
-    if (!accountKeySet.has(order.solana_reference)) return NextResponse.json({ ok: false, error: "Payment reference does not match this order." }, { status: 400 });
-    const instructions = transaction.transaction.message.instructions as Array<{ program?: string; parsed?: { type?: string; info?: { destination?: string; lamports?: number } } }>;
-    const receivedLamports = instructions.reduce((total, instruction) => {
-      const info = instruction.parsed?.info;
-      return instruction.program === "system" && instruction.parsed?.type === "transfer" && info?.destination === SOLANA_TREASURY ? total + Number(info.lamports ?? 0) : total;
-    }, 0);
-    const requiredLamports = Number(order.solana_amount_lamports);
-    if (!Number.isSafeInteger(requiredLamports) || requiredLamports <= 0) return NextResponse.json({ ok: false, error: "Payment intent amount is unavailable." }, { status: 400 });
-    if (receivedLamports < requiredLamports) return NextResponse.json({ ok: false, error: "Payment amount is lower than the order total." }, { status: 400 });
-    await db.execute(sql`UPDATE public.shipment_orders SET payment_status = 'paid', solana_signature = ${signature}, email = ${email.toLowerCase().trim()}, paid_at = now(), updated_at = now() WHERE id = ${order.id} AND payment_status = 'pending'`);
+    if (!transaction?.meta || transaction.meta.err || !transaction.blockTime) return NextResponse.json({ ok: false, error: "Payment is not finalized or failed." }, { status: 400 });
+
+    let receivedUsdcAtomic = 0n;
+    if (Array.isArray(transaction.tokenTransfers)) {
+      for (const transfer of transaction.tokenTransfers as Array<{ mint?: string; to?: string; amount?: string | number }>) {
+        if (transfer.mint === usdcMint && transfer.to === SOLANA_TREASURY) {
+          const amount = BigInt(String(transfer.amount ?? "0"));
+          receivedUsdcAtomic += amount;
+        }
+      }
+    }
+
+    if (receivedUsdcAtomic === 0n && Array.isArray(transaction.meta?.postTokenBalances) && Array.isArray(transaction.meta?.preTokenBalances)) {
+      const postBalances = transaction.meta.postTokenBalances as Array<{ mint?: string; owner?: string; accountIndex?: number; uiTokenAmount?: { amount?: string } }>;
+      const preBalances = transaction.meta.preTokenBalances as Array<{ mint?: string; owner?: string; accountIndex?: number; uiTokenAmount?: { amount?: string } }>;
+      for (const postBalance of postBalances) {
+        if (postBalance.mint !== usdcMint || postBalance.owner !== SOLANA_TREASURY) continue;
+        const previous = preBalances.find((preBalance) => preBalance.accountIndex === postBalance.accountIndex && preBalance.mint === postBalance.mint && preBalance.owner === postBalance.owner);
+        const postAmount = BigInt(String(postBalance.uiTokenAmount?.amount ?? "0"));
+        const preAmount = BigInt(String(previous?.uiTokenAmount?.amount ?? "0"));
+        if (postAmount > preAmount) receivedUsdcAtomic += postAmount - preAmount;
+      }
+    }
+
+    if (receivedUsdcAtomic === 0n) return NextResponse.json({ ok: false, error: "No USDC token transfer to treasury was detected in this transaction." }, { status: 400 });
+
+    const expectedAtomic = BigInt(order.total_cents) * 10000n;
+    if (receivedUsdcAtomic < expectedAtomic) return NextResponse.json({ ok: false, error: "USDC amount is lower than the order total." }, { status: 400 });
+
+    try {
+      await db.execute(sql`INSERT INTO public.wallet_deposits (user_id, order_id, asset, amount_atomic, amount_usd_cents, signature, status, confirmed_at) VALUES (${order.user_id}, ${order.id}, 'USDC', ${String(receivedUsdcAtomic)}, ${order.total_cents}, ${signature}, 'confirmed', now())`);
+    } catch (error) {
+      console.error("[solana/verify] wallet_deposits insert failed", error);
+      return NextResponse.json({ ok: false, error: "This payment signature has already been used or is invalid." }, { status: 400 });
+    }
+
+    await db.execute(sql`UPDATE public.shipment_orders SET payment_status = 'paid', solana_signature = ${signature}, payment_provider = 'solana_usdc', usdc_amount = ${Number(receivedUsdcAtomic <= 9007199254740991n ? receivedUsdcAtomic : 0n)}, email = ${email.toLowerCase().trim()}, paid_at = now(), updated_at = now() WHERE id = ${order.id} AND payment_status = 'pending'`);
+
     return NextResponse.json({ ok: true, paid: true });
   } catch (error) {
     console.error("[solana/verify]", error);

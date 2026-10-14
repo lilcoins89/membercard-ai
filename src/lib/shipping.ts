@@ -8,7 +8,7 @@ export const shippingSchema = z.object({
   city: z.string().min(2).max(80),
   state: z.string().max(80).optional(),
   zip: z.string().min(3).max(20),
-  country: z.string().length(2),
+  country: z.string().trim().min(2).max(3).transform((value) => value.toUpperCase()),
   phone: z.string().min(7).max(30).optional(),
   email: z.string().email(),
   service: z.enum(["standard", "rush"]).default("standard"),
@@ -22,6 +22,10 @@ export const SHIPPING_SERVICES = {
 } as const;
 export type ShippingService = keyof typeof SHIPPING_SERVICES;
 export type ShipmentStatus = "pending" | "payment_confirmed" | "processing" | "shipped" | "in_transit" | "delivered" | "failed" | "cancelled" | "refunded";
+
+export function isValidUKPostcode(value: string) {
+  return /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(value.trim());
+}
 
 export function quoteShipping(country: string, config?: { base_fee_cents?: number; card_fee_cents?: number; international_surcharge_cents?: number }) {
   const base = config?.base_fee_cents ?? 699;

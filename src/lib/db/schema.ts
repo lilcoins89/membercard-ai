@@ -45,11 +45,27 @@ export const shipmentOrders = pgTable("shipment_orders", {
   solanaUsdRate: numeric("solana_usd_rate", { precision: 12, scale: 4 }),
   paymentProvider: text("payment_provider"),
   solanaSignature: text("solana_signature").unique(),
-  usdcAmount: integer("usdc_amount"),
+  usdcAmount: bigint("usdc_amount", { mode: "number" }),
   stripeSessionId: text("stripe_session_id").unique(),
   paidAt: timestamp("paid_at", { withTimezone: true }),
+  providerOrderId: text("provider_order_id"),
+  fulfillmentStatus: text("fulfillment_status"),
+  trackingNumber: text("tracking_number"),
+  trackingUrl: text("tracking_url"),
+  estimatedDelivery: timestamp("estimated_delivery", { withTimezone: true }),
+  errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const fulfillmentEvents = pgTable("fulfillment_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  shipmentId: uuid("shipment_id").references(() => shipmentOrders.id, { onDelete: "cascade" }).notNull(),
+  eventType: text("event_type").notNull(),
+  status: text("status"),
+  payload: jsonb("payload"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const cardDesigns = pgTable("card_designs", {
@@ -62,7 +78,7 @@ export const cardDesigns = pgTable("card_designs", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const schema = { membershipCards, shippingConfig, shipmentOrders, cardDesigns };
+export const schema = { membershipCards, shippingConfig, shipmentOrders, cardDesigns, fulfillmentEvents };
 export type MembershipCard = typeof membershipCards.$inferSelect;
 export type ShipmentOrder = typeof shipmentOrders.$inferSelect;
 export type CardDesign = typeof cardDesigns.$inferSelect;

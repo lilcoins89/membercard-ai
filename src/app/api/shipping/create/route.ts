@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql } from "drizzle-orm";
-import { shippingSchema, SHIPPING_SERVICES } from "@/lib/shipping";
+import { shippingSchema, SHIPPING_SERVICES, isValidUKPostcode } from "@/lib/shipping";
 import crypto from "node:crypto";
 
 export async function POST(req: Request) {
   const parsed = shippingSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ ok: false, error: "Check your delivery details." }, { status: 400 });
   const input = parsed.data;
+
+  if ((input.country === "GB" || input.country === "UK") && !isValidUKPostcode(input.zip)) {
+    return NextResponse.json({ ok: false, error: "Enter a valid UK postcode." }, { status: 400 });
+  }
+
+  if (input.country !== "US" && input.country !== "GB" && input.country !== "UK") {
+    return NextResponse.json({ ok: false, error: "This flow currently supports United States and United Kingdom shipping only." }, { status: 400 });
+  }
+
   const rows = await db.execute(sql`SELECT base_fee_cents, card_fee_cents, international_surcharge_cents FROM public.shipping_config WHERE id = 1`);
   const service = SHIPPING_SERVICES[input.service];
   const quote = { shipping_cost_cents: service.amount_cents, estimated_days: service.estimated_days };
