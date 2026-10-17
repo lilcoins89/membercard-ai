@@ -87,3 +87,24 @@ alter table public.shipment_orders add column if not exists delivery_method text
 alter table public.shipment_orders add column if not exists delivery_fee_cents integer not null default 1000;
 alter table public.shipment_orders add column if not exists delivery_window text not null default '2–3 weeks';
 create unique index if not exists shipment_orders_payment_signature_idx on public.shipment_orders (solana_signature) where solana_signature is not null;
+
+-- Fulfillment tracking columns (written by src/app/api/stripe/webhook/route.ts).
+alter table public.shipment_orders add column if not exists fulfillment_status text not null default 'pending'
+  check (fulfillment_status in ('pending','payment_confirmed','processing','shipped','in_transit','delivered','failed','cancelled','refunded'));
+alter table public.shipment_orders add column if not exists provider_order_id text;
+alter table public.shipment_orders add column if not exists tracking_number text;
+alter table public.shipment_orders add column if not exists tracking_url text;
+alter table public.shipment_orders add column if not exists estimated_delivery timestamptz;
+alter table public.shipment_orders add column if not exists error_message text;
+alter table public.shipment_orders add column if not exists stripe_payment_intent_id text;
+
+create table if not exists public.fulfillment_events (
+  id uuid primary key default gen_random_uuid(),
+  shipment_id uuid not null references public.shipment_orders(id) on delete cascade,
+  event_type text not null,
+  status text,
+  payload jsonb,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+create index if not exists fulfillment_events_shipment_idx on public.fulfillment_events (shipment_id, created_at desc);
