@@ -9,7 +9,7 @@ const cardSchema = z.object({
   memberNumber: z.string().trim().optional(),
   expiration: z.string().nullable(),
   photoDataUrl: z.string().nullable(),
-  design: z.record(z.string(), z.unknown()),
+  design: z.record(z.string(), z.unknown()).default({}),
 });
 
 export async function POST(request: Request) {

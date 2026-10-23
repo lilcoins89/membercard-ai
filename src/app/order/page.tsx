@@ -11,7 +11,7 @@ import { SHIPPING_SERVICES } from "@/lib/shipping";
 import type { CardDraft } from "@/lib/types";
 
 type FormState = { full_name: string; street: string; unit: string; city: string; state: string; zip: string; country: string; phone: string; email: string };
-const empty: FormState = { full_name: "", street: "", unit: "", city: "", state: "", zip: "", country: "US", phone: "", email: "" };
+const empty: FormState = { full_name: "", street: "", unit: "", city: "", state: "", zip: "", country: "GB", phone: "", email: "" };
 
 export default function OrderPage() {
   const [card, setCard] = useState<CardDraft | null>(() => {

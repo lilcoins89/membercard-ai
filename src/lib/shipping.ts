@@ -24,10 +24,14 @@ export type ShippingService = keyof typeof SHIPPING_SERVICES;
 export type ShipmentStatus = "pending" | "payment_confirmed" | "processing" | "shipped" | "in_transit" | "delivered" | "failed" | "cancelled" | "refunded";
 
 export function quoteShipping(country: string, config?: { base_fee_cents?: number; card_fee_cents?: number; international_surcharge_cents?: number }) {
+  const normalizedCountry = country.toUpperCase();
+  if (normalizedCountry === "GB" || normalizedCountry === "UK") {
+    return { shipping_cost_cents: 1500, currency: "usd", estimated_days: 4, delivery_window: "2–4 days" };
+  }
   const base = config?.base_fee_cents ?? 699;
   const card = config?.card_fee_cents ?? 0;
-  const international = country.toUpperCase() === "US" ? 0 : (config?.international_surcharge_cents ?? 1200);
-  return { shipping_cost_cents: base + card + international, currency: "usd", estimated_days: country.toUpperCase() === "US" ? 7 : 18 };
+  const international = normalizedCountry === "US" ? 0 : (config?.international_surcharge_cents ?? 1200);
+  return { shipping_cost_cents: base + card + international, currency: "usd", estimated_days: normalizedCountry === "US" ? 7 : 18, delivery_window: normalizedCountry === "US" ? "5–7 days" : "2–3 weeks" };
 }
 
 export const timeline = ["pending", "payment_confirmed", "processing", "shipped", "in_transit", "delivered"] as const;
